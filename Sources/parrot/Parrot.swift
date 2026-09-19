@@ -136,8 +136,14 @@ struct Run: ParsableCommand {
                         do {
                             let text = try await transcriber.transcribe(samples)
                             let elapsed = Date().timeIntervalSince(started)
+                            // Deliberately does NOT log `text`. Under the
+                            // LaunchAgent, stderr is redirected to a log file
+                            // that is never rotated, so logging the transcript
+                            // would persist everything the user ever dictates
+                            // in plaintext on disk. Length is enough to tell
+                            // "it worked" from "it returned nothing".
                             FileHandle.standardError.write(Data(
-                                String(format: "→ %.2fs · %@\n", elapsed, text).utf8
+                                String(format: "→ %.2fs · %d chars\n", elapsed, text.count).utf8
                             ))
                             await MainActor.run {
                                 TextInjector.inject(text)
