@@ -43,6 +43,17 @@ struct Install: ParsableCommand {
             .appendingPathComponent("\(Self.label).plist")
     }
 
+    /// Daemon log directory.
+    ///
+    /// Not /tmp: files there land world-readable (0644) in a directory every
+    /// local process can enumerate, and they outlive `--uninstall`.
+    /// ~/Library/Logs is mode 0700 and is where macOS expects user-level
+    /// daemon logs to go.
+    private var logDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs", isDirectory: true)
+    }
+
     private func writeAgent() throws {
         let binary = try resolveBinaryPath()
 
@@ -52,8 +63,8 @@ struct Install: ParsableCommand {
             "RunAtLoad": true,
             "KeepAlive": ["SuccessfulExit": false] as [String: Any],
             "ProcessType": "Interactive",
-            "StandardOutPath": "/tmp/parrot.out.log",
-            "StandardErrorPath": "/tmp/parrot.err.log",
+            "StandardOutPath": logDirectory.appendingPathComponent("parrot.out.log").path,
+            "StandardErrorPath": logDirectory.appendingPathComponent("parrot.err.log").path,
         ]
 
         let url = plistURL
@@ -80,7 +91,7 @@ struct Install: ParsableCommand {
         print("✓ launch-at-login installed")
         print("  plist:  \(url.path)")
         print("  binary: \(binary)")
-        print("  logs:   /tmp/parrot.out.log, /tmp/parrot.err.log")
+        print("  logs:   \(logDirectory.path)/parrot.{out,err}.log")
     }
 
     private func removeAgent() throws {
@@ -88,6 +99,12 @@ struct Install: ParsableCommand {
         if FileManager.default.fileExists(atPath: url.path) {
             _ = runLaunchctl(["bootout", "gui/\(uid())", url.path])
             try FileManager.default.removeItem(at: url)
+            // Upstream leaves these behind on uninstall; don't.
+            for name in ["parrot.out.log", "parrot.err.log"] {
+                try? FileManager.default.removeItem(
+                    at: logDirectory.appendingPathComponent(name)
+                )
+            }
             print("✓ launch-at-login removed")
         } else {
             print("nothing to remove (no agent at \(url.path))")
