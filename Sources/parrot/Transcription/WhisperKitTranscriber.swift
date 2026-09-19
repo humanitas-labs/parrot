@@ -11,6 +11,24 @@ actor WhisperKitTranscriber: Transcriber {
         self.model = model
     }
 
+    /// Where model weights and tokenizers are cached.
+    ///
+    /// WhisperKit (via swift-transformers' HubApi) defaults this to
+    /// `~/Documents/huggingface`. That folder sits behind macOS's TCC prompt
+    /// for the Documents folder — a permission a dictation daemon has no
+    /// business asking for, and one that makes the app look like it wants to
+    /// read your files. Application Support is the correct home for a cache
+    /// like this and requires no grant. WhisperKit derives `tokenizerFolder`
+    /// from `downloadBase` when it isn't set explicitly, so this one value
+    /// redirects both the CoreML weights and the tokenizer files.
+    static var modelCacheDirectory: URL {
+        let base = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        return base.appendingPathComponent("parrot", isDirectory: true)
+    }
+
     /// Loads the model into memory; downloads first if not already on disk.
     /// Call once at startup so the first hotkey press isn't blocked on model
     /// download/load.
@@ -20,7 +38,15 @@ actor WhisperKitTranscriber: Transcriber {
             throw TranscriberError.missingEngineID
         }
         FileHandle.standardError.write(Data("loading \(model.id)...\n".utf8))
-        let config = WhisperKitConfig(model: whisperKitID, verbose: false, prewarm: true, load: true)
+        let cacheDir = Self.modelCacheDirectory
+        try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        let config = WhisperKitConfig(
+            model: whisperKitID,
+            downloadBase: cacheDir,
+            verbose: false,
+            prewarm: true,
+            load: true
+        )
         pipeline = try await WhisperKit(config)
         FileHandle.standardError.write(Data("✓ \(model.id) ready\n".utf8))
     }
