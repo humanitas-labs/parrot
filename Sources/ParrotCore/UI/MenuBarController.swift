@@ -5,8 +5,9 @@ import AppKit
 /// (since we run as `.accessory` — no dock icon, no main window).
 ///
 /// The menu has named slots, top to bottom: `statusLine`, `modelLine`,
-/// `grantPermissionsItem`, `settingsItem`, `checkForUpdatesItem`, `quitItem`. Features update a slot
-/// rather than rebuilding the menu.
+/// `grantPermissionsItem`, `fixWordItem`, `undoFixWordItem`, `settingsItem`,
+/// `checkForUpdatesItem`, `quitItem`. Features update a slot rather than
+/// rebuilding the menu.
 @MainActor
 final class MenuBarController {
     private static func readyStatus(_ key: HotkeyKey) -> String { "idle · hold \(key.shortName) to dictate" }
@@ -21,6 +22,12 @@ final class MenuBarController {
     let grantPermissionsItem: NSMenuItem
     /// What `grantPermissionsItem` does; set by `OnboardingWindow`.
     var onGrantPermissions: (() -> Void)?
+    /// Slot: Fix Word… (#54): the selected word and what it should be.
+    let fixWordItem: NSMenuItem
+    var onFixWord: (() -> Void)?
+    /// Slot: takes back the last Fix Word. Hidden until there is one.
+    let undoFixWordItem: NSMenuItem
+    var onUndoFixWord: (() -> Void)?
     /// Slot: opens the Settings window (#41) through `onOpenSettings`.
     let settingsItem: NSMenuItem
     /// Called by Settings…; set by the daemon, which owns the window.
@@ -63,6 +70,12 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
+        fixWordItem = NSMenuItem(title: "Fix Word…", action: #selector(fixWordClicked), keyEquivalent: "")
+        menu.addItem(fixWordItem)
+        undoFixWordItem = NSMenuItem(title: "Undo Fix Word", action: #selector(undoFixWordClicked), keyEquivalent: "")
+        undoFixWordItem.isHidden = true
+        menu.addItem(undoFixWordItem)
+
         settingsItem = NSMenuItem(title: "Settings…", action: #selector(settingsClicked), keyEquivalent: ",")
         menu.addItem(settingsItem)
 
@@ -86,11 +99,19 @@ final class MenuBarController {
         settingsItem.target = self
         checkForUpdatesItem.target = self
         grantPermissionsItem.target = self
+        fixWordItem.target = self
+        undoFixWordItem.target = self
         configureButton()
     }
 
     func setStatus(_ text: String) {
         statusLine.title = text
+    }
+
+    /// Offers Undo for the word Fix Word added last, or hides it.
+    func setUndoFixWord(_ word: String?) {
+        undoFixWordItem.title = word.map { "Undo Fix Word “\($0)”" } ?? "Undo Fix Word"
+        undoFixWordItem.isHidden = word == nil
     }
 
     func setHotkeyHealth(_ health: HotkeyHealth) {
@@ -152,6 +173,14 @@ final class MenuBarController {
 
     @objc private func quitClicked() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func fixWordClicked() {
+        onFixWord?()
+    }
+
+    @objc private func undoFixWordClicked() {
+        onUndoFixWord?()
     }
 }
 

@@ -32,6 +32,24 @@
 	<string>Copyright © Humanitas Labs. MIT License.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Parrot records while you hold the dictation key and turns your speech into text on this Mac. Audio never leaves it.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Fix Word in Parrot</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>fixWord</string>
+			<key>NSPortName</key>
+			<string>Parrot</string>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+			</array>
+		</dict>
+	</array>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>

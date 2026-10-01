@@ -84,6 +84,7 @@ Sources/ParrotCore/
     HotkeyMonitor.swift         CGEventTap for modifier changes only
     Gesture.swift               press/release filtering: short-tap discard, chord cancel (pure, tested)
     FocusSnapshot.swift         what was focused, whether it is editable or secure, and the character before the cursor
+    SelectedText.swift          the selected text, read only when the user chooses Fix Word…
     Delivery.swift              inject, copy or discard, from the focus at start and at delivery (pure decision, tested)
     Spacing.swift               the spaces around a transcript: always after, before when the text there needs it (pure, tested)
     TextInjector.swift          delivery into the focused field (paste or typed Unicode)
@@ -113,10 +114,15 @@ Sources/ParrotCore/
     DictionarySettings.swift    the example sentences, one per language, in settings.json
     DictionaryProcessor.swift   the replacement pass
     DictionaryContext.swift     the example sentence for the active language, as the prompt
+    DictionaryWriter.swift      line edits to the `dictionary` file that keep every other line, under a lock, with an atomic rename (text edits pure, tested)
+    FixWord.swift               what Fix Word… writes and what its Undo removes (pure, tested)
+    CommonWords.swift           everyday English words, for Fix Word's warnings
   Stats/
     StatsRecorder.swift         counts only, as a DictationObserver
   UI/
     MenuBarController.swift
+    FixWordPanel.swift          Fix Word…: what the model wrote, what it should be, and whether to replace it everywhere
+    FixWordUI.swift             Fix Word's menu items, its macOS Service, and Undo for the last fix
     RecordingOverlay.swift
     OnboardingWindow.swift      hotkey, languages and both permissions on one page; follows the grants live
     SettingsWindow.swift        the Settings window: header, General and Transcription on one page, laid out by hand
