@@ -126,7 +126,7 @@ extension UserDictionary {
     }
 
     /// Splits a trimmed line at its first tab or run of two or more spaces.
-    private static func columns(_ line: String) -> (word: String, replaces: String?) {
+    static func columns(_ line: String) -> (word: String, replaces: String?) {
         let chars = Array(line)
         for i in chars.indices {
             let isSeparator = chars[i] == "\t" || (chars[i] == " " && i + 1 < chars.count && chars[i + 1] == " ")
@@ -139,7 +139,7 @@ extension UserDictionary {
         return (line, nil)
     }
 
-    private static func isHeader(word: String, replaces: String?) -> Bool {
+    static func isHeader(word: String, replaces: String?) -> Bool {
         word.caseInsensitiveCompare("Word") == .orderedSame
             && replaces?.caseInsensitiveCompare("Replaces") == .orderedSame
     }

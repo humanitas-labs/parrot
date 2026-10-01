@@ -1,8 +1,8 @@
 # Dictionary
 
-Last updated: `2026.09.28`
+Last updated: `2026.10.01`
 
-> Your names and technical terms, so Parrot spells them the way you do. One plain-text file, edited by hand, applied on the next dictation.
+> Your names and technical terms, so Parrot spells them the way you do. One plain-text file, edited by hand or with Fix Word…, applied on the next dictation.
 
 The file is `~/.config/parrot/dictionary` (or `$XDG_CONFIG_HOME/parrot/dictionary`), with no extension. **Open Dictionary File** in Settings opens it in your default text editor. The first run creates a small starter file. A filled-in one looks like this:
 
@@ -22,6 +22,19 @@ Each line is one word, spelled the way you want it, and optionally what the mode
 Every word is a canonical spelling: written in any casing, it is rewritten to yours, so `whisperkit` becomes `WhisperKit`. Each item in its Replaces list is rewritten to the word. Use Replaces for words the model splits or mishears.
 
 The rewrite runs on every transcript. It matches whole words only (`api` never changes `rapid`), ignores case, and works in any script. When two entries match at the same place, the longer one wins. Each word is rewritten at most once, so one entry's output never feeds another, and the word is inserted exactly as written. An item in a Replaces list takes precedence over the same text as a word of its own. However many entries you add, they cost nothing noticeable, because they rewrite the finished text and never reach the model.
+
+## Fix Word…
+
+To add a word without opening the file, select what Parrot wrote in any app, then choose **Fix Word…** in the Parrot menu, or **Services → Fix Word in Parrot** in that app's menu. Type the spelling you want and click **Add**.
+
+- **Replace “…” in every dictation** adds what Parrot wrote to the word's Replaces list. It starts off when what Parrot wrote is an everyday word, because the row would change that word in every dictation. The panel warns when a row would change ordinary text.
+- Without Replace, the row only keeps the word's spelling.
+- A new word goes under `# Added by Parrot` at the end of the file. A word that is already there keeps its line, and Parrot adds the item to it. Every other line stays byte for byte as it was, comments included.
+- **Undo Fix Word** in the Parrot menu takes back the last fix: the whole row when Fix Word added it, else only the item.
+
+To give Fix Word a shortcut, open **System Settings → Keyboard → Keyboard Shortcuts → Services** and find **Fix Word in Parrot** under Text.
+
+Parrot reads the selection only when you choose Fix Word, never in a password field, and only up to four words.
 
 ## Example sentences
 

@@ -32,6 +32,10 @@ package enum Paths {
     /// plain-text table. No extension, so it reads as a name, not a format.
     static var dictionaryFile: URL { config.appendingPathComponent("dictionary") }
 
+    /// `dictionary.lock` in `appSupport`: held with `flock` while Parrot
+    /// writes `dictionaryFile` (#54), so two writers never interleave.
+    static var dictionaryLock: URL { appSupport.appendingPathComponent("dictionary.lock") }
+
     /// `dictionary.json` in `config`: the old format, converted once at
     /// startup by `DictionaryMigration`.
     static var legacyDictionaryFile: URL { config.appendingPathComponent("dictionary.json") }
