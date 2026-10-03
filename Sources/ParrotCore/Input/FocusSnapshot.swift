@@ -14,6 +14,9 @@ struct FocusSnapshot {
     var element: FocusedElement?
     /// The focused element is a secure text field or reports protected content.
     var isSecure: Bool
+    /// Insertion point or selection, in UTF-16 units, when the field exposes it.
+    /// Metadata only: taking a snapshot does not read the field's text.
+    var selection: NSRange? = nil
 
     /// Upper bound on each Accessibility call, so a hung app cannot stall
     /// the main thread (and with it the hotkey tap).
@@ -32,7 +35,12 @@ struct FocusSnapshot {
             return FocusSnapshot(pid: pid, element: nil, isSecure: false)
         }
         let element = value as! AXUIElement
-        return FocusSnapshot(pid: pid, element: FocusedElement(element), isSecure: isSecure(element))
+        let secure = isSecure(element)
+        let focused = FocusedElement(element)
+        return FocusSnapshot(
+            pid: pid, element: focused, isSecure: secure,
+            selection: secure ? nil : focused.selectedRange
+        )
     }
 
     /// Whether focus moved from `self` to `now`. The app must match. The
@@ -41,7 +49,14 @@ struct FocusSnapshot {
     /// Accessibility tree lazily and may expose nothing at recording start.
     func hasChanged(to now: FocusSnapshot) -> Bool {
         if pid != now.pid { return true }
-        if let element, let other = now.element, element != other { return true }
+        if let element, let other = now.element {
+            if element != other { return true }
+            // Moving the cursor or selecting other text within the same field
+            // changes the destination too. Unknown ranges keep the existing
+            // fallback for apps that do not expose selection metadata.
+            if let selection, let otherSelection = now.selection,
+               selection != otherSelection { return true }
+        }
         return false
     }
 
@@ -75,6 +90,18 @@ struct FocusedElement: Equatable {
 
     static func == (lhs: FocusedElement, rhs: FocusedElement) -> Bool {
         CFEqual(lhs.ref, rhs.ref)
+    }
+
+    /// Selection metadata only; do not call on a secure field.
+    var selectedRange: NSRange? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(ref, kAXSelectedTextRangeAttribute as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        var range = CFRange()
+        guard AXValueGetValue(value as! AXValue, .cfRange, &range),
+              range.location >= 0, range.location < Int.max, range.length >= 0,
+              range.length <= Int.max - range.location else { return nil }
+        return NSRange(location: range.location, length: range.length)
     }
 
     /// The character before the insertion point, for `Spacing`. Reads the

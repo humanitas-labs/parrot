@@ -8,8 +8,8 @@ final class DeliveryTests: XCTestCase {
         FocusedElement(AXUIElementCreateApplication(pid))
     }
 
-    private func focus(pid: pid_t? = 100, element: FocusedElement? = nil, secure: Bool = false) -> FocusSnapshot {
-        FocusSnapshot(pid: pid, element: element, isSecure: secure)
+    private func focus(pid: pid_t? = 100, element: FocusedElement? = nil, secure: Bool = false, selection: NSRange? = nil) -> FocusSnapshot {
+        FocusSnapshot(pid: pid, element: element, isSecure: secure, selection: selection)
     }
 
     func testUnchangedFocusInjects() {
@@ -36,6 +36,36 @@ final class DeliveryTests: XCTestCase {
     func testElementChangeInSameAppCopiesToClipboard() {
         let start = focus(element: element(1))
         XCTAssertEqual(DeliveryDecision.decide(start: start, now: focus(element: element(2))), .copyToClipboard)
+    }
+
+    func testCursorMovedInSameFieldCopiesToClipboard() {
+        let start = focus(element: element(1), selection: NSRange(location: 3, length: 0))
+        let now = focus(element: element(1), selection: NSRange(location: 9, length: 0))
+        XCTAssertEqual(DeliveryDecision.decide(start: start, now: now), .copyToClipboard)
+    }
+
+    func testSelectionChangedAtSameLocationCopiesToClipboard() {
+        let start = focus(element: element(1), selection: NSRange(location: 3, length: 0))
+        let now = focus(element: element(1), selection: NSRange(location: 3, length: 4))
+        XCTAssertEqual(DeliveryDecision.decide(start: start, now: now), .copyToClipboard)
+    }
+
+    func testUnchangedSelectionInjects() {
+        let start = focus(element: element(1), selection: NSRange(location: 3, length: 4))
+        XCTAssertEqual(DeliveryDecision.decide(start: start, now: start), .inject)
+    }
+
+    func testUnknownSelectionPreservesExistingFallback() {
+        let known = focus(element: element(1), selection: NSRange(location: 3, length: 0))
+        let unknown = focus(element: element(1))
+        XCTAssertEqual(DeliveryDecision.decide(start: known, now: unknown), .inject)
+        XCTAssertEqual(DeliveryDecision.decide(start: unknown, now: known), .inject)
+    }
+
+    func testSecureFieldWinsOverSelectionChange() {
+        let start = focus(element: element(1), selection: NSRange(location: 3, length: 0))
+        let now = focus(element: element(1), secure: true, selection: NSRange(location: 9, length: 0))
+        XCTAssertEqual(DeliveryDecision.decide(start: start, now: now), .discardSecure)
     }
 
     /// Electron builds its Accessibility tree lazily, so an element seen at
