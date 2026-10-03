@@ -83,7 +83,7 @@ Sources/ParrotCore/
   Input/
     HotkeyMonitor.swift         CGEventTap for modifier changes only
     Gesture.swift               press/release filtering: short-tap discard, chord cancel (pure, tested)
-    FocusSnapshot.swift         what was focused, whether it is editable or secure, and the character before the cursor
+    FocusSnapshot.swift         what was focused, whether it is secure, its selection range, and the character before the cursor
     Delivery.swift              inject, copy or discard, from the focus at start and at delivery (pure decision, tested)
     Spacing.swift               the spaces around a transcript: always after, before when the text there needs it (pure, tested)
     TextInjector.swift          delivery into the focused field (paste or typed Unicode)
@@ -168,6 +168,13 @@ HotkeyMonitor ──flags──▶ Gesture ──start/stop──▶ DictationCo
 ```
 
 `DictationController` owns the state machine (`idle`, `recording`, `transcribing`) and nothing else. It is `@MainActor`. Transcription runs off the main actor; the controller awaits it.
+
+Delivery also treats a changed cursor position or selection within the same
+focused element as focus drift when both snapshots expose the selected range.
+It uses the existing clipboard fallback rather than inserting at the changed
+destination. Snapshot capture reads range metadata, never field text, and skips
+the range for secure fields. Missing ranges retain the existing delivery policy;
+this does not detect edits that leave the same selection range.
 
 ### 4.2 — Extension points
 
