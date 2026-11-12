@@ -67,6 +67,7 @@ struct SettingsView: View {
                         .buttonStyle(.pill)
                     }
                     HotkeyRow(store: store)
+                    MicrophoneRow(store: store)
                     LaunchAtLoginRow()
                     PillRow("Reset") {
                         Button("Reset to Defaults") { store.write(Settings()) }

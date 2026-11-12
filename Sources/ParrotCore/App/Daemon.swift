@@ -91,7 +91,10 @@ public enum Daemon {
         app.setActivationPolicy(.accessory)
 
         let monitor = HotkeyMonitor(key: options.hotkey ?? settings.current.hotkey.key, debug: options.debugHotkey)
-        let capture = AudioCapture(mode: options.captureMode)
+        let capture = AudioCapture(
+            mode: options.captureMode,
+            selection: InputSelection(uid: settings.current.audio.inputDevice)
+        )
         let overlay: RecordingOverlay? = options.noOverlay ? nil : RecordingOverlay()
         if let overlay {
             capture.onLevel = { level in overlay.pushLevel(level) }
@@ -102,6 +105,36 @@ public enum Daemon {
         let settingsWindow = SettingsWindow(store: settings)
         menuBar.onOpenSettings = { settingsWindow.show() }
         menuBar.setHotkey(monitor.key)
+
+        // The menu bar names the microphone in use, and the chosen one when
+        // it is missing (#44). Refreshed as devices come and go, when the
+        // choice changes, and at every press.
+        var lastFallback: String?
+        func showInput(_ resolution: InputSelection.Resolution?) {
+            let used = resolution.flatMap { InputDevice.name(of: $0.id) }
+            let missing = resolution?.fellBack == true || (resolution == nil && settings.current.audio.inputDevice != nil)
+                ? (settings.current.audio.inputDeviceName ?? "chosen microphone")
+                : nil
+            menuBar.setInput(used, missing: missing)
+            if let missing, missing != lastFallback {
+                Log.warning("microphone: \(missing) not connected; recording from \(used ?? "no input")")
+            }
+            lastFallback = missing
+        }
+        showInput(capture.resolveInput())
+        capture.onInputUsed = { id, fellBack in
+            showInput(InputSelection.Resolution(id: id, fellBack: fellBack))
+        }
+        let deviceChanges = InputDeviceList.shared.$inputs
+            .combineLatest(InputDeviceList.shared.$defaultName)
+            .dropFirst()
+            .sink { _ in
+                // Published before the change lands; read after it.
+                DispatchQueue.main.async { MainActor.assumeIsolated { showInput(capture.resolveInput()) } }
+            }
+        if !options.captureMode.followsSelection, settings.current.audio.inputDevice != nil {
+            Log.warning("microphone: --capture engine records from the system default, not the chosen microphone")
+        }
         // Parrot.app sets up the hotkey, languages and permissions, and
         // explains each permission before macOS asks (#51).
         OnboardingWindow.startIfNeeded(store: settings, menuBar: menuBar)
@@ -172,6 +205,11 @@ public enum Daemon {
             if old.model != new.model {
                 switcher.select(new.model.id)
             }
+            if old.audio != new.audio {
+                capture.selection.uid = new.audio.inputDevice
+                showInput(capture.resolveInput())
+                Log.info("microphone: \(new.audio.inputDeviceName ?? new.audio.inputDevice ?? "same as system"); applies at next press")
+            }
             if old.language != new.language {
                 // Read per dictation by dictionaryContext.
                 Log.info("language: \(new.language.code ?? "automatic"); applies at next press")
@@ -223,7 +261,7 @@ public enum Daemon {
         signal(SIGINT, SIG_IGN)
 
         Log.info("model: \(model.id) · inject: \(options.injectMode.rawValue) · ^C to quit")
-        app.run()
+        withExtendedLifetime(deviceChanges) { app.run() }
     }
 
     /// Starts the hotkey tap, or, without an Accessibility grant, asks for one

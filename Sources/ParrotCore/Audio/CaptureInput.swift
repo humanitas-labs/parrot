@@ -17,14 +17,19 @@ public enum CaptureMode: String, CaseIterable, Sendable {
     /// The mode a run uses unless told otherwise.
     public static let standard: CaptureMode = .hal
 
-    /// The input that implements this mode.
-    func makeInput() -> CaptureInput {
+    /// The input that implements this mode, recording from `selection`.
+    /// The engine mode records from the system default whatever is chosen.
+    func makeInput(selection: InputSelection = InputSelection()) -> CaptureInput {
         switch self {
         case .engine: return EngineInput()
-        case .hal: return HALInput(keepsPrepared: false)
-        case .prepared: return HALInput(keepsPrepared: true)
+        case .hal: return HALInput(keepsPrepared: false, selection: selection)
+        case .prepared: return HALInput(keepsPrepared: true, selection: selection)
         }
     }
+
+    /// Whether this mode records from the microphone chosen in Settings.
+    /// `AVAudioEngine`'s input node follows the system default only (#44).
+    var followsSelection: Bool { self != .engine }
 }
 
 /// Where an input delivers what it captures. Called on the input's own
