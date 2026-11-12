@@ -38,33 +38,33 @@ final class HALInputTests: XCTestCase {
 
     // MARK: Changes to the input
 
-    private func classify(defaultInput: AudioDeviceID?, isAlive: Bool = true, _ device: InputDevice) -> HALInput.Change {
-        HALInput.classify(built: mic, current: DeviceWatcher.Snapshot(defaultInput: defaultInput, isAlive: isAlive, device: device))
+    private func classify(selected: AudioDeviceID?, isAlive: Bool = true, _ device: InputDevice) -> HALInput.Change {
+        HALInput.classify(built: mic, current: DeviceWatcher.Snapshot(selected: selected, isAlive: isAlive, device: device))
     }
 
     func testANotificationThatChangesNothingKeepsTheRecording() {
-        XCTAssertEqual(classify(defaultInput: 42, mic), .none)
+        XCTAssertEqual(classify(selected: 42, mic), .none)
     }
 
     func testAnotherDeviceOrAMissingOneIsARouteChange() {
-        XCTAssertEqual(classify(defaultInput: 43, mic), .route)
-        XCTAssertEqual(classify(defaultInput: nil, mic), .route)
-        XCTAssertEqual(classify(defaultInput: 42, isAlive: false, mic), .route)
+        XCTAssertEqual(classify(selected: 43, mic), .route)
+        XCTAssertEqual(classify(selected: nil, mic), .route)
+        XCTAssertEqual(classify(selected: 42, isAlive: false, mic), .route)
     }
 
     func testANewRateOrChannelCountOnTheSameDeviceIsFollowed() {
         var changed = mic
         changed.sampleRate = 44_100
-        XCTAssertEqual(classify(defaultInput: 42, changed), .format(changed))
+        XCTAssertEqual(classify(selected: 42, changed), .format(changed))
         changed = mic
         changed.channels = 2
-        XCTAssertEqual(classify(defaultInput: 42, changed), .format(changed))
+        XCTAssertEqual(classify(selected: 42, changed), .format(changed))
     }
 
     func testAnUnrecordableNewFormatIsARouteChange() {
         for (rate, channels) in [(0.0, UInt32(1)), (48_000, 0), (.nan, 1)] {
             let changed = InputDevice(sampleRate: rate, channels: channels, id: 42)
-            XCTAssertEqual(classify(defaultInput: 42, changed), .route, "\(rate) Hz × \(channels)")
+            XCTAssertEqual(classify(selected: 42, changed), .route, "\(rate) Hz × \(channels)")
         }
     }
 
@@ -87,6 +87,15 @@ final class HALInputTests: XCTestCase {
             }
             input.stop()
         }
+    }
+
+    func testTheHALModesRecordFromTheSelectionAndTheEngineDoesNot() {
+        let selection = InputSelection(uid: "usb-mic")
+        XCTAssertTrue((CaptureMode.hal.makeInput(selection: selection) as? HALInput)?.selection === selection)
+        XCTAssertTrue((CaptureMode.prepared.makeInput(selection: selection) as? HALInput)?.selection === selection)
+        XCTAssertTrue(CaptureMode.hal.followsSelection)
+        XCTAssertTrue(CaptureMode.prepared.followsSelection)
+        XCTAssertFalse(CaptureMode.engine.followsSelection)
     }
 
     func testOnlyThePreparedModeKeepsTheUnitBetweenPresses() {

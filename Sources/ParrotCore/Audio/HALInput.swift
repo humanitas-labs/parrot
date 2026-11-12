@@ -6,19 +6,20 @@ import Foundation
 /// Capture through a Core Audio AUHAL input unit (#52), without
 /// `AVAudioEngine`'s graph on top.
 ///
-/// Per press the unit is bound to the default input, set to deliver Float32
+/// Per press the unit is bound to the input `selection` resolves to (the
+/// microphone chosen in Settings, else the default input), set to deliver Float32
 /// at the device's own rate, and started; `AudioCapture` converts to 16 kHz.
 /// On release it is stopped and, unless `keepsPrepared`, disposed.
 ///
 /// With `keepsPrepared` the unit stays built and initialized between presses
 /// but never started: the device is not running, no callback fires, and the
 /// microphone indicator is off. A press only starts it. The unit is rebuilt
-/// on the next press if the default input or its format changed meanwhile.
+/// on the next press if the selected input or its format changed meanwhile.
 ///
 /// The #39 guarantees hold without an Objective-C exception to guard
 /// against: every Core Audio call returns a status, and 0 Hz, 0 channel and
 /// non-finite formats are refused before the unit is configured with them.
-/// Mid-recording, the default input moving to another device or the device
+/// Mid-recording, the selected input moving to another device or the device
 /// going away is reported through the sink, so the recording is discarded
 /// instead of returned partial. A new rate or channel count on the same
 /// device is followed instead: AUHAL does not resample input, so the unit is
@@ -34,12 +35,13 @@ final class HALInput: CaptureInput {
         case none
         /// The same device now runs at this rate or channel count.
         case format(InputDevice)
-        /// The default input is another device, the device went away, or it
-        /// now reports a format that cannot be recorded.
+        /// The selection now resolves to another device, the device went
+        /// away, or it now reports a format that cannot be recorded.
         case route
     }
 
     let keepsPrepared: Bool
+    let selection: InputSelection
 
     private let control = DispatchQueue(label: "parrot.capture.hal")
     // Everything below is touched only on `control`.
@@ -53,8 +55,9 @@ final class HALInput: CaptureInput {
     /// The input changed while idle; rebuild before the next start.
     private var stale = false
 
-    init(keepsPrepared: Bool) {
+    init(keepsPrepared: Bool, selection: InputSelection = InputSelection()) {
         self.keepsPrepared = keepsPrepared
+        self.selection = selection
     }
 
     deinit {
@@ -63,10 +66,10 @@ final class HALInput: CaptureInput {
         teardown()
     }
 
-    /// Builds and initializes the unit for the current default input without
+    /// Builds and initializes the unit for the selected input without
     /// starting it. Does nothing if it is already built for that device.
     func prepare() throws {
-        let device = try InputDevice.current()
+        let device = try InputDevice.current(selection)
         try control.sync { try prepare(device: device) }
     }
 
@@ -164,7 +167,7 @@ final class HALInput: CaptureInput {
     private func inputChanged() {
         guard let built else { return }
         let recording = context?.isRecording == true
-        switch Self.classify(built: built, current: DeviceWatcher.snapshot(of: built.id)) {
+        switch Self.classify(built: built, current: DeviceWatcher.snapshot(of: built.id, selection: selection)) {
         case .none:
             return
         case .route:
@@ -266,7 +269,7 @@ final class HALInput: CaptureInput {
     /// What `current`, a fresh read of the input, means for a unit built for
     /// `built`.
     static func classify(built: InputDevice, current: DeviceWatcher.Snapshot) -> Change {
-        guard current.defaultInput == built.id, current.isAlive else { return .route }
+        guard current.selected == built.id, current.isAlive else { return .route }
         if sameInput(built, current.device) { return .none }
         guard (try? InputDevice.validate(sampleRate: current.device.sampleRate, channels: current.device.channels)) != nil else {
             return .route
@@ -387,13 +390,16 @@ private let halInputCallback: AURenderCallback = { refCon, flags, timestamp, bus
 }
 
 /// Listens for the changes that matter to a built unit: the default input
-/// switching, the device's rate or input channels changing, or the device
-/// disappearing, and calls `changed`, which re-reads and decides. Listeners
-/// are removed when this is released.
+/// switching (which moves "Same as System", or brings back a chosen device
+/// that was missing), the device's rate or input channels changing, or the
+/// device disappearing, and calls `changed`, which re-reads and decides.
+/// Listeners are removed when this is released.
 final class DeviceWatcher {
     /// A fresh read of the input a unit was built for.
     struct Snapshot: Equatable {
-        var defaultInput: AudioDeviceID?
+        /// What the selection resolves to now: the chosen device if it is
+        /// connected, else the default input.
+        var selected: AudioDeviceID?
         var isAlive: Bool
         var device: InputDevice
     }
@@ -429,28 +435,16 @@ final class DeviceWatcher {
         }
     }
 
-    /// Reads the default input and `id`'s presence, rate and channels now.
-    static func snapshot(of id: AudioDeviceID) -> Snapshot {
+    /// Reads the selected input and `id`'s presence, rate and channels now.
+    static func snapshot(of id: AudioDeviceID, selection: InputSelection) -> Snapshot {
         Snapshot(
-            defaultInput: InputDevice.defaultInputID(),
-            isAlive: isAlive(id),
+            selected: selection.resolve()?.id,
+            isAlive: InputDevice.isAlive(id),
             device: InputDevice(
                 sampleRate: InputDevice.nominalSampleRate(id),
                 channels: InputDevice.inputChannels(id),
                 id: id
             )
         )
-    }
-
-    private static func isAlive(_ id: AudioDeviceID) -> Bool {
-        var alive: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyDeviceIsAlive,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &alive) == noErr else { return false }
-        return alive != 0
     }
 }

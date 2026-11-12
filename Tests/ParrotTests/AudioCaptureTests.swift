@@ -195,6 +195,7 @@ final class AudioCaptureTests: XCTestCase {
             .microphoneDenied, .microphonePending, .noInputDevice,
             .invalidInputFormat(sampleRate: 0, channels: 0),
             .engineStartFailed(Boom()), .routeChanged,
+            .silentInput(device: "MacBook Pro Microphone"), .silentInput(device: nil),
         ]
         for error in errors {
             let message = (error as UserFacingError).userMessage

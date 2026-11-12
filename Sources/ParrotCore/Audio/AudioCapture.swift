@@ -1,4 +1,5 @@
 import AVFoundation
+import CoreAudio
 import Foundation
 
 /// Captures microphone audio while recording is active and returns a 16 kHz
@@ -23,7 +24,20 @@ package final class AudioCapture {
     /// Invoked on an arbitrary thread; hop to main if you touch UI.
     var onLevel: ((Float) -> Void)?
 
+    /// Called on the caller's thread each time a recording starts, with the
+    /// input it records from and whether that is a fallback because the
+    /// chosen microphone is not connected.
+    var onInputUsed: ((_ device: AudioDeviceID, _ fellBack: Bool) -> Void)?
+
+    /// A recording held at least this long that never carried a non-zero
+    /// sample is reported as `CaptureError.silentInput`. Long enough that a
+    /// Bluetooth mic still settling (#52) is not mistaken for a dead one.
+    static let silenceCheckAfter: TimeInterval = 1.0
+
     let mode: CaptureMode
+    /// The microphone to record from (#44). Change `uid` to switch; it
+    /// applies from the next press.
+    package let selection: InputSelection
 
     /// Counts and timings of the last finished capture, including press to
     /// first sample. Nil until one finishes.
@@ -41,13 +55,20 @@ package final class AudioCapture {
     private var device = InputDevice(sampleRate: 0, channels: 0)
     private var delivered = InputDevice(sampleRate: 0, channels: 0)
     private var startDelay: TimeInterval = 0
+    private var pressedAt: UInt64 = 0
     private let converters = ConverterCache(targetFormat: AudioCapture.targetFormat)
     private let buffer = CaptureBuffer()
 
-    package init(mode: CaptureMode = .standard) {
+    package init(mode: CaptureMode = .standard, selection: InputSelection = InputSelection()) {
         self.mode = mode
-        self.input = mode.makeInput()
+        self.selection = selection
+        self.input = mode.makeInput(selection: selection)
         input.prepareIdle()
+    }
+
+    /// What the next press will record from, as `start()` resolves it.
+    package func resolveInput() -> InputSelection.Resolution? {
+        mode.followsSelection ? selection.resolve() : InputSelection().resolve()
     }
 
     /// Begin recording. Idempotent — calling while already recording is a no-op.
@@ -66,7 +87,8 @@ package final class AudioCapture {
 
         // Check the device before any input touches it: a missing input or a
         // 0 Hz / 0 channel format raises an ObjC exception in AVAudioEngine.
-        let device = try InputDevice.current()
+        guard let resolved = resolveInput() else { throw CaptureError.noInputDevice }
+        let device = try InputDevice.read(resolved.id)
 
         converters.resetAll()
         buffer.reset(startedAt: startedAt)
@@ -84,7 +106,9 @@ package final class AudioCapture {
         }
         recording = true
         self.device = device
+        pressedAt = startedAt
         startDelay = HostClock.seconds(from: startedAt, to: HostClock.now())
+        onInputUsed?(device.id, resolved.fellBack)
     }
 
     /// Stop recording and return all captured samples (16 kHz mono Float32).
@@ -103,18 +127,33 @@ package final class AudioCapture {
 
     /// Stop recording, stop the input, and return the captured samples.
     /// Throws `CaptureError.routeChanged` instead of returning a partial
-    /// capture if the input route changed mid-recording.
+    /// capture if the input route changed mid-recording, and
+    /// `.silentInput` if the microphone sent nothing but digital silence.
     package func finish() throws -> [Float] {
         guard recording else { return [] }
         recording = false
         input.stop()
+        let held = HostClock.seconds(from: pressedAt, to: HostClock.now())
 
         // The input has stopped; flush what the resampler still holds.
         converters.drain { buffer.appendTail($0) }
         let stats = buffer.currentStats
         lastStats = stats
         logStats(stats)
-        return try buffer.finish()
+        let samples = try buffer.finish()
+        if let error = Self.silenceError(stats: stats, held: held, device: InputDevice.name(of: device.id)) {
+            throw error
+        }
+        return samples
+    }
+
+    /// `.silentInput` when a recording held for `silenceCheckAfter` or more
+    /// never carried a single non-zero sample. A working microphone always
+    /// picks up some noise; exact zeros mean it is muted at 0 input volume
+    /// or cut off, as a MacBook's built-in mic is with the lid closed (#56).
+    static func silenceError(stats: CaptureBuffer.Stats, held: TimeInterval, device: String?) -> CaptureError? {
+        guard held >= silenceCheckAfter, stats.firstSoundDelay == nil else { return nil }
+        return .silentInput(device: device)
     }
 
     /// The body of an input callback: note when the buffer's first sample,

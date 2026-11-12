@@ -4,7 +4,7 @@ import AppKit
 /// a glance and provides the only persistent control surface for the daemon
 /// (since we run as `.accessory` — no dock icon, no main window).
 ///
-/// The menu has named slots, top to bottom: `statusLine`, `modelLine`,
+/// The menu has named slots, top to bottom: `statusLine`, `modelLine`, `inputLine`,
 /// `grantPermissionsItem`, `settingsItem`, `checkForUpdatesItem`, `quitItem`. Features update a slot
 /// rather than rebuilding the menu.
 @MainActor
@@ -16,6 +16,9 @@ final class MenuBarController {
     let statusLine: NSMenuItem
     /// Slot: the loaded model.
     let modelLine: NSMenuItem
+    /// Slot: the microphone dictation records from (#44), and whether that
+    /// is a fallback because the chosen one is not connected.
+    let inputLine: NSMenuItem
     /// Slot: reopens the onboarding window (#51). Shown in Parrot.app while
     /// a permission is missing.
     let grantPermissionsItem: NSMenuItem
@@ -52,6 +55,10 @@ final class MenuBarController {
         modelLine = NSMenuItem(title: "model: \(modelID)", action: nil, keyEquivalent: "")
         modelLine.isEnabled = false
         menu.addItem(modelLine)
+
+        inputLine = NSMenuItem(title: "microphone: none", action: nil, keyEquivalent: "")
+        inputLine.isEnabled = false
+        menu.addItem(inputLine)
 
         grantPermissionsItem = NSMenuItem(
             title: "Grant Permissions…",
@@ -105,6 +112,18 @@ final class MenuBarController {
 
     func setModel(_ modelID: String) {
         modelLine.title = "model: \(modelID)"
+    }
+
+    /// `device` is what dictation records from, nil if there is no input.
+    /// `missing` names the chosen microphone when it is not connected.
+    func setInput(_ device: String?, missing: String?) {
+        inputLine.title = Self.inputTitle(device, missing: missing)
+    }
+
+    static func inputTitle(_ device: String?, missing: String?) -> String {
+        let used = "microphone: \(device ?? "none")"
+        guard let missing else { return used }
+        return "\(used) · \(missing) not connected"
     }
 
     private func configureButton() {

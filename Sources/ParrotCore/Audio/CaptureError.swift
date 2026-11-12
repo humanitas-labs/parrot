@@ -17,6 +17,10 @@ package enum CaptureError: Error, UserFacingError, CustomStringConvertible {
     /// The input route changed mid-recording (a device was connected or
     /// removed, or its format changed). The partial capture was discarded.
     case routeChanged
+    /// The input delivered only exact zeros, or nothing, for the whole
+    /// recording: it is muted, or cut off like a MacBook's built-in mic with
+    /// the lid closed (#56). Carries the device's name when known.
+    case silentInput(device: String?)
 
     package var userMessage: String {
         switch self {
@@ -30,6 +34,8 @@ package enum CaptureError: Error, UserFacingError, CustomStringConvertible {
             return "microphone failed to start: try again, or check System Settings → Sound"
         case .routeChanged:
             return "microphone changed while recording: nothing captured, try again"
+        case .silentInput(let device):
+            return "\(device ?? "microphone") heard nothing: choose a microphone in Parrot Settings"
         }
     }
 
